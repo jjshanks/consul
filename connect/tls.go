@@ -366,7 +366,22 @@ func (cfg *dynamicTLSConfig) Leaf() *tls.Certificate {
 func (cfg *dynamicTLSConfig) Ready() bool {
 	cfg.RLock()
 	defer cfg.RUnlock()
-	return cfg.leaf != nil && cfg.roots != nil
+	if cfg.leaf == nil || cfg.roots == nil {
+		return false
+	}
+
+	if cfg.leaf.Leaf == nil {
+		if cert, err := x509.ParseCertificate(cfg.leaf.Certificate[0]); err == nil {
+			cfg.leaf.Leaf = cert
+		} else {
+			return false
+		}
+	}
+
+	if _, err := cfg.leaf.Leaf.Verify(x509.VerifyOptions{Roots: cfg.roots}); err != nil {
+		return false
+	}
+	return true
 }
 
 // ReadyWait returns a chan that is closed when the the Service becomes ready
