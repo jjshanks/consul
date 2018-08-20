@@ -277,6 +277,8 @@ func newDynamicTLSConfig(base *tls.Config) *dynamicTLSConfig {
 	if len(base.Certificates) > 0 {
 		cfg.leaf = &base.Certificates[0]
 		if cfg.leaf != nil {
+			// If this does error then future calls to Ready will fail
+			// It is better to handle not-Ready rather than failing
 			if cert, err := x509.ParseCertificate(cfg.leaf.Certificate[0]); err == nil {
 				cfg.leaf.Leaf = cert
 			}
@@ -392,11 +394,12 @@ func (cfg *dynamicTLSConfig) Ready() bool {
 // ReadyWait returns a chan that is closed when the the Service becomes ready
 // for use for the first time. Note that if the Service is ready when it is
 // called it returns a nil chan. Ready means that it has root and leaf
-// certificates configured which we assume are valid. The service may
-// subsequently stop being "ready" if it's certificates expire or are revoked
-// and an error prevents new ones being loaded but this method will not stop
-// returning a nil chan in that case. It is only useful for initial startup. For
-// ongoing health Ready() should be used.
+// certificates configured which and that the configured roots are able to
+// verify the leaf certificate. The service may subsequently stop being "ready"
+// if it's certificates expire or are revoked and an error prevents new ones
+// being loaded but this method will not stop returning a nil chan in that
+// case. It is only useful for initial startup. For ongoing health Ready()
+// should be used.
 func (cfg *dynamicTLSConfig) ReadyWait() <-chan struct{} {
 	return cfg.readyCh
 }
