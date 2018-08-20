@@ -271,11 +271,16 @@ func newDynamicTLSConfig(base *tls.Config) *dynamicTLSConfig {
 	cfg := &dynamicTLSConfig{
 		base: base,
 	}
-	if len(base.Certificates) > 0 {
-		cfg.leaf = &base.Certificates[0]
-	}
 	if base.RootCAs != nil {
 		cfg.roots = base.RootCAs
+	}
+	if len(base.Certificates) > 0 {
+		cfg.leaf = &base.Certificates[0]
+		if cfg.leaf != nil {
+			if cert, err := x509.ParseCertificate(cfg.leaf.Certificate[0]); err == nil {
+				cfg.leaf.Leaf = cert
+			}
+		}
 	}
 	if !cfg.Ready() {
 		cfg.readyCh = make(chan struct{})
@@ -334,6 +339,13 @@ func (cfg *dynamicTLSConfig) SetRoots(roots *x509.CertPool) error {
 func (cfg *dynamicTLSConfig) SetLeaf(leaf *tls.Certificate) error {
 	cfg.Lock()
 	defer cfg.Unlock()
+	if leaf != nil {
+		if cert, err := x509.ParseCertificate(leaf.Certificate[0]); err == nil {
+			leaf.Leaf = cert
+		} else {
+			return err
+		}
+	}
 	cfg.leaf = leaf
 	cfg.notify()
 	return nil
@@ -366,21 +378,14 @@ func (cfg *dynamicTLSConfig) Leaf() *tls.Certificate {
 func (cfg *dynamicTLSConfig) Ready() bool {
 	cfg.RLock()
 	defer cfg.RUnlock()
-	if cfg.leaf == nil || cfg.roots == nil {
+	if cfg.leaf == nil || cfg.roots == nil || cfg.leaf.Leaf == nil {
 		return false
-	}
-
-	if cfg.leaf.Leaf == nil {
-		if cert, err := x509.ParseCertificate(cfg.leaf.Certificate[0]); err == nil {
-			cfg.leaf.Leaf = cert
-		} else {
-			return false
-		}
 	}
 
 	if _, err := cfg.leaf.Leaf.Verify(x509.VerifyOptions{Roots: cfg.roots}); err != nil {
 		return false
 	}
+
 	return true
 }
 
